@@ -1,0 +1,50 @@
+name: Build
+on:
+  push:
+    branches:
+      - main # or the name of your main branch
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: ⚡ Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/.github/workflows/build.yml') }}
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          components: rustfmt, clippy
+      - uses: actions-rs/cargo@v1
+        name: rustfmt
+        with:
+          command: fmt
+          args: --all --check
+      - uses: actions-rs/tarpaulin@v0.1
+        name: cargo test and coverage
+      - uses: codecov/codecov-action@v2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+          verbose: true # optional (default = false)
+      - uses: actions/upload-artifact@v1
+        name: Artifacts
+        with:
+          name: code-coverage-report
+          path: cobertura.xml
+      - uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - uses: sonarsource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
