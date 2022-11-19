@@ -48,7 +48,6 @@ mod lottery {
     pub type Result<T> = core::result::Result<T, Error>;
     use ink_storage::{traits::SpreadAllocate, Mapping};
 
-
     /// Emitted whenever a new bet is being registered.
     #[ink(event)]
     pub struct RegisterBet {
@@ -94,7 +93,8 @@ mod lottery {
 
         fn new_init(&mut self) {
             let bet = [0; 32];
-            self.ticket_and_address.insert(bet, &[AccountId::default(); 8]);
+            self.ticket_and_address
+                .insert(bet, &[AccountId::default(); 8]);
             self.jackpot = 0;
             self.last_drawing = BlockNumber::default();
             self.def_address = [AccountId::default(); 8];
@@ -200,6 +200,21 @@ mod lottery {
                 assert_eq!(contract.register_bet(bet), Ok(()));
             }
             contract
+        }
+
+        fn use_random_chain_extension() {
+            struct MockedExtension;
+            impl ink_env::test::ChainExtension for MockedExtension {
+                fn func_id(&self) -> u32 {
+                    1101
+                }
+                fn call(&mut self, _input: &[u8], output: &mut Vec<u8>) -> u32 {
+                    let ret: [u8; 32] = [1; 32];
+                    scale::Encode::encode_to(&ret, output);
+                    0
+                }
+            }
+            ink_env::test::register_chain_extension(MockedExtension);
         }
 
         /// We test if the default constructor does its job.
@@ -323,14 +338,14 @@ mod lottery {
             assert_eq!(contract.get_last_drawing(), 0);
         }
 
-        /*#[ink::test]
-        fn test_draw_sets_last_drawing() {
+        #[ink::test]
+        fn test_draw_sets_last_drawing_to_10() {
+            use_random_chain_extension();
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.bob);
             let mut contract = Lottery::new();
-
-            contract.draw(10)
-
-        }*/
+            contract.draw(10);
+            assert_eq!(contract.get_last_drawing(), 10);
+        }
     }
 }
