@@ -63,7 +63,8 @@ mod lottery {
     #[ink(storage)]
     #[derive(SpreadAllocate)]
     pub struct Lottery {
-        ticket_and_address: Mapping<[u8; 32], [AccountId; 8]>,
+        round: u8,
+        ticket_and_address: Mapping<([u8; 32], u8), [AccountId; 8]>,
         def_address: [AccountId; 8],
         last_drawing: BlockNumber,
         jackpot: Balance,
@@ -81,12 +82,6 @@ mod lottery {
 
     const BET_PRICE: Balance = 1_000_000;
 
-    impl Default for Lottery {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
     impl Lottery {
         #[ink(constructor)]
         pub fn new() -> Self {
@@ -95,14 +90,16 @@ mod lottery {
 
         fn new_init(&mut self) {
             let bet = [0; 32];
+            self.round = 0;
             self.ticket_and_address
-                .insert(bet, &[AccountId::default(); 8]);
+                .insert((bet, 0), &[AccountId::default(); 8]);
             self.jackpot = 0;
             self.last_drawing = BlockNumber::default();
             self.def_address = [AccountId::default(); 8];
             self.winner_bet = [0; 32];
             self.last_pot_per_bet = 0;
         }
+
         /// Register specific bet with caller as owner.
         #[ink(message, payable)]
         pub fn register_bet(&mut self, bet: [u8; 32]) -> Result<()> {
@@ -112,13 +109,13 @@ mod lottery {
 
             let caller = self.env().caller();
 
-            if self.ticket_and_address.contains(bet) {
-                let mut betters = self.ticket_and_address.get(bet).unwrap();
+            if self.ticket_and_address.contains((bet, self.round)) {
+                let mut betters = self.ticket_and_address.get((bet, self.round)).unwrap();
                 assert!(betters[7] == AccountId::default(), "bet sold out!");
                 for i in 0..betters.len() {
                     if betters[i] == AccountId::default() {
                         betters[i] = caller;
-                        self.ticket_and_address.insert(bet, &betters);
+                        self.ticket_and_address.insert((bet, self.round), &betters);
                         self.env().emit_event(RegisterBet { bet, from: caller });
                         break;
                     }
@@ -126,7 +123,7 @@ mod lottery {
             } else {
                 let mut betters: [AccountId; 8] = [AccountId::default(); 8];
                 betters[0] = caller;
-                self.ticket_and_address.insert(bet, &betters);
+                self.ticket_and_address.insert((bet, self.round), &betters);
                 self.env().emit_event(RegisterBet { bet, from: caller });
             }
 
@@ -166,7 +163,7 @@ mod lottery {
                             let _res = self.env().transfer(winner_id, self.last_pot_per_bet);
                         }
                     }
-                    //self.reset_game()
+                    self.reset_game()
                 }
             }
         }
@@ -181,6 +178,11 @@ mod lottery {
             return count;
         }
 
+        fn reset_game(&mut self) {
+            self.round += 1;
+            self.jackpot = 0;
+        }
+
         /// Simply returns the winner bet
         #[ink(message)]
         pub fn get(&self) -> [u8; 32] {
@@ -190,7 +192,7 @@ mod lottery {
         #[ink(message)]
         pub fn get_accounts_by_bet(&mut self, bet_hash: [u8; 32]) -> [AccountId; 8] {
             self.ticket_and_address
-                .get(bet_hash)
+                .get((bet_hash, self.round))
                 .unwrap_or(self.def_address)
         }
 
@@ -198,7 +200,7 @@ mod lottery {
         pub fn get_winner_or_default(&self) -> [AccountId; 8] {
             return self
                 .ticket_and_address
-                .get(self.winner_bet)
+                .get((self.winner_bet, self.round))
                 .unwrap_or(self.def_address);
         }
 
@@ -238,7 +240,7 @@ mod lottery {
 
         fn set_next_caller(caller: AccountId) {
             ink_env::test::set_caller::<Environment>(caller);
-            ink_env::test::set_account_balance::<Environment>(caller, BET_PRICE * 100);
+            ink_env::test::set_account_balance::<Environment>(caller, BET_PRICE * 255);
             ink_env::test::set_value_transferred::<Environment>(BET_PRICE);
         }
 
@@ -274,37 +276,21 @@ mod lottery {
             return bet_arr;
         }
 
-        fn setup_jackpot() -> Lottery {
+        fn setup_jackpot(numb_bets: u8) -> Lottery {
             use_random_chain_extension();
             let mut contract = Lottery::new();
             let default_accounts = default_accounts();
             let mut bet_arr = [0; 32];
-            bet_arr[0] = 1;
-            bet_arr[1] = 1;
-            bet_arr[2] = 1;
-
             set_next_caller(default_accounts.bob);
-
-            assert_eq!(
-                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
-                Ok(())
-            );
-            assert_eq!(
-                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
-                Ok(())
-            );
-            assert_eq!(
-                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
-                Ok(())
-            );
-            assert_eq!(
-                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
-                Ok(())
-            );
-            assert_eq!(
-                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
-                Ok(())
-            );
+            for i in 0..numb_bets {
+                bet_arr[0] = i;
+                bet_arr[1] = i;
+                bet_arr[2] = i;
+                assert_eq!(
+                    ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
+                    Ok(())
+                );
+            }
             return contract;
         }
 
@@ -557,6 +543,13 @@ mod lottery {
         }
 
         #[ink::test]
+        fn test_1000_applicants(){
+            use_random_chain_extension();
+            let mut contract = setup_jackpot(255);
+            assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
+        }
+
+        #[ink::test]
         fn winner_is_bob_and_alice() {
             let default_accounts = default_accounts();
             use_random_chain_extension();
@@ -585,7 +578,7 @@ mod lottery {
 
         #[ink::test]
         fn two_winner_jackpot_should_be_half() {
-            let mut contract = setup_jackpot();
+            let mut contract = setup_jackpot(5);
             contract = register_number_of_win_bets(2, contract);
             contract.draw(0);
             let winner = contract.get_winner_or_default();
@@ -596,7 +589,7 @@ mod lottery {
 
         #[ink::test]
         fn three_winner_jackpot_should_be_third() {
-            let mut contract = setup_jackpot();
+            let mut contract = setup_jackpot(5);
             contract = register_number_of_win_bets(3, contract);
 
             contract.draw(0);
@@ -608,7 +601,7 @@ mod lottery {
 
         #[ink::test]
         fn four_winner_jackpot_should_be_fourth() {
-            let mut contract = setup_jackpot();
+            let mut contract = setup_jackpot(5);
             contract = register_number_of_win_bets(4, contract);
 
             contract.draw(0);
@@ -620,7 +613,7 @@ mod lottery {
 
         #[ink::test]
         fn eight_winner_jackpot_should_be_eighth() {
-            let mut contract = setup_jackpot();
+            let mut contract = setup_jackpot(5);
             contract = register_number_of_win_bets(8, contract);
 
             contract.draw(0);
@@ -628,6 +621,27 @@ mod lottery {
             contract.transfer_to_winners(winner);
 
             assert_eq!(1_625_000, contract.get_last_pot_per_bet());
+        }
+
+        #[ink::test]
+        fn reset_game_works() {
+            let default_accounts = default_accounts();
+            let mut contract = Lottery::new();
+            set_next_caller(default_accounts.alice);
+            let bet = get_win_bet();
+
+            let mut bet_arr2 = [0; 32];
+            bet_arr2[0] = 1;
+            bet_arr2[1] = 1;
+            bet_arr2[2] = 1;
+
+
+            assert_eq!(contract.register_bet(bet), Ok(()));
+            assert_eq!(contract.register_bet(bet_arr2), Ok(()));
+            let account_bet = contract.get_accounts_by_bet(bet);
+            contract.reset_game();
+
+            assert_ne!(contract.get_accounts_by_bet(bet), account_bet);
         }
     }
 }
