@@ -67,6 +67,7 @@ mod lottery {
         def_address: [AccountId; 8],
         last_drawing: BlockNumber,
         jackpot: Balance,
+        winner_bet: [u8; 32],
     }
 
     /// Errors that can occur upon calling this contract.
@@ -98,6 +99,7 @@ mod lottery {
             self.jackpot = 0;
             self.last_drawing = BlockNumber::default();
             self.def_address = [AccountId::default(); 8];
+            self.winner_bet = [0; 32];
         }
         /// Register specific bet with caller as owner.
         #[ink(message, payable)]
@@ -140,8 +142,13 @@ mod lottery {
             win_bet[0] = rand_output[0];
             win_bet[1] = rand_output[1];
             win_bet[2] = rand_output[2];
-
+            self.winner_bet = win_bet;
             self.last_drawing = now;
+        }
+        /// Simply returns the winner bet
+        #[ink(message)]
+        pub fn get(&self) -> [u8; 32] {
+            self.winner_bet
         }
         // Get all accounts per bet
         #[ink(message)]
@@ -215,6 +222,16 @@ mod lottery {
                 }
             }
             ink_env::test::register_chain_extension(MockedExtension);
+        }
+
+        #[ink::test]
+        fn default_works() {
+            use_random_chain_extension();
+            let mut contract = Lottery::new();
+            let init = contract.get();
+            contract.draw(0);
+            let second = contract.get();
+            assert_ne!(init, second);
         }
 
         /// We test if the default constructor does its job.
@@ -346,6 +363,14 @@ mod lottery {
             let mut contract = Lottery::new();
             contract.draw(10);
             assert_eq!(contract.get_last_drawing(), 10);
+        }
+
+        #[ink::test]
+        fn test_last_winner_bet_init() {
+            let default_accounts = default_accounts();
+            set_next_caller(default_accounts.bob);
+            let contract = Lottery::new();
+            assert_eq!(contract.get(), [0; 32]);
         }
     }
 }
