@@ -158,6 +158,13 @@ mod lottery {
                 .unwrap_or(self.def_address)
         }
 
+        #[ink(message)]
+        pub fn get_winner_or_default(&self) -> [AccountId; 8] {
+            return self.ticket_and_address
+                .get(self.winner_bet)
+                .unwrap_or(self.def_address);
+        }
+
         /// Simply returns the block of the last drawing
         #[ink(message)]
         pub fn get_last_drawing(&mut self) -> BlockNumber {
@@ -209,6 +216,15 @@ mod lottery {
             contract
         }
 
+        fn get_win_bet() -> [u8; 32] {
+            let mut bet_arr = [0; 32];
+            bet_arr[0] = 21;
+            bet_arr[1] = 236;
+            bet_arr[2] = 123;
+
+            return bet_arr;
+        }
+
         fn use_random_chain_extension() {
             struct MockedExtension;
             impl ink_env::test::ChainExtension for MockedExtension {
@@ -216,7 +232,7 @@ mod lottery {
                     1101
                 }
                 fn call(&mut self, _input: &[u8], output: &mut Vec<u8>) -> u32 {
-                    let ret: [u8; 32] = [1; 32];
+                    let ret = get_win_bet();
                     scale::Encode::encode_to(&ret, output);
                     0
                 }
@@ -371,6 +387,90 @@ mod lottery {
             set_next_caller(default_accounts.bob);
             let contract = Lottery::new();
             assert_eq!(contract.get(), [0; 32]);
+        }
+
+        #[ink::test]
+        fn test_last_winner_bet_not_init_after_draw() {
+            use_random_chain_extension();
+            let default_accounts = default_accounts();
+            set_next_caller(default_accounts.bob);
+            let mut contract = Lottery::new();
+            contract.draw(0);
+            assert_ne!(contract.get(), [0; 32]);
+        }
+
+        #[ink::test]
+        fn test_last_winner_bet_is_win_bet() {
+            use_random_chain_extension();
+            let default_accounts = default_accounts();
+            set_next_caller(default_accounts.bob);
+            let mut contract = Lottery::new();
+            contract.draw(0);
+            assert_eq!(contract.get(), get_win_bet());
+        }
+
+        #[ink::test]
+        fn winner_is_alice() {
+            let default_accounts = default_accounts();
+            use_random_chain_extension();
+            set_next_caller(default_accounts.alice);
+            let mut contract = Lottery::new();
+
+            assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
+            contract.draw(0);
+
+            let mut winners: [AccountId; 8] = [AccountId::default(); 8];
+            winners[0] = default_accounts.alice;
+            assert_eq!(winners, contract.get_winner_or_default())
+        }
+
+        #[ink::test]
+        fn winner_is_bob_and_not_alice() {
+            let default_accounts = default_accounts();
+            use_random_chain_extension();
+            set_next_caller(default_accounts.bob);
+            let mut contract = Lottery::new();
+
+            assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
+
+            set_next_caller(default_accounts.alice);
+            let mut bet_arr2 = [0; 32];
+            bet_arr2[0] = 1;
+            bet_arr2[1] = 1;
+            bet_arr2[2] = 1;
+
+            assert_eq!(contract.register_bet(bet_arr2), Ok(()));
+
+            contract.draw(0);
+            let winner = contract.get_winner_or_default();
+
+            let mut should_be_winner: [AccountId; 8] = [AccountId::default(); 8];
+            should_be_winner[0] = default_accounts.bob;
+            assert_eq!(should_be_winner, winner);
+
+            let mut not_the_winner: [AccountId; 8] = [AccountId::default(); 8];
+            not_the_winner[0] = default_accounts.alice;
+            assert_ne!(not_the_winner, winner);
+        }
+
+        #[ink::test]
+        fn winner_is_bob_and_alice() {
+            let default_accounts = default_accounts();
+            use_random_chain_extension();
+            set_next_caller(default_accounts.bob);
+            let mut contract = Lottery::new();
+            assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
+
+            set_next_caller(default_accounts.alice);
+            assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
+
+            contract.draw(0);
+            assert_eq!(get_win_bet(), contract.get());
+            let winner = contract.get_winner_or_default();
+            let mut should_win: [AccountId; 8] = [AccountId::default(); 8];
+            should_win[0] = default_accounts.bob;
+            should_win[1] = default_accounts.alice;
+            assert_eq!(should_win, winner);
         }
     }
 }
