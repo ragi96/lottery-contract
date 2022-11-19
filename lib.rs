@@ -232,7 +232,6 @@ mod lottery {
         /// Imports `ink_lang` so we can use `#[ink::test]`.
         use ink_lang as ink;
 
-
         fn default_accounts() -> ink_env::test::DefaultAccounts<CustomEnvironment> {
             ink_env::test::default_accounts::<Environment>()
         }
@@ -286,18 +285,30 @@ mod lottery {
 
             set_next_caller(default_accounts.bob);
 
-            assert_eq!(ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE), Ok(()));
-            assert_eq!(ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE), Ok(()));
-            assert_eq!(ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE), Ok(()));
-            assert_eq!(ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE), Ok(()));
-            assert_eq!(ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE), Ok(()));
+            assert_eq!(
+                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
+                Ok(())
+            );
+            assert_eq!(
+                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
+                Ok(())
+            );
+            assert_eq!(
+                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
+                Ok(())
+            );
+            assert_eq!(
+                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
+                Ok(())
+            );
+            assert_eq!(
+                ink_env::pay_with_call!(contract.register_bet(bet_arr), BET_PRICE),
+                Ok(())
+            );
             return contract;
         }
 
-        fn register_number_of_win_bets(
-            num_registers: u8,
-            mut contract: Lottery,
-        ) -> Lottery {
+        fn register_number_of_win_bets(num_registers: u8, mut contract: Lottery) -> Lottery {
             let default_accounts = default_accounts();
 
             for i in 0..num_registers {
@@ -309,7 +320,10 @@ mod lottery {
                 } else {
                     set_next_caller(default_accounts.bob);
                 }
-                assert_eq!(ink_env::pay_with_call!(contract.register_bet(get_win_bet()), BET_PRICE), Ok(()));
+                assert_eq!(
+                    ink_env::pay_with_call!(contract.register_bet(get_win_bet()), BET_PRICE),
+                    Ok(())
+                );
             }
             contract
         }
