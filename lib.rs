@@ -1,12 +1,53 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use ink_env::Environment;
 use ink_lang as ink;
 
-#[ink::contract]
+#[ink::chain_extension]
+pub trait FetchRandom {
+    type ErrorCode = RandomReadErr;
+
+    #[ink(extension = 1101, returns_result = false)]
+    fn fetch_random() -> [u8; 32];
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, scale::Encode, scale::Decode)]
+#[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+pub enum RandomReadErr {
+    FailGetRandomSource,
+}
+
+impl ink_env::chain_extension::FromStatusCode for RandomReadErr {
+    fn from_status_code(status_code: u32) -> Result<(), Self> {
+        match status_code {
+            0 => Ok(()),
+            1 => Err(Self::FailGetRandomSource),
+            _ => panic!("encountered unknown status code"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+pub enum CustomEnvironment {}
+
+impl Environment for CustomEnvironment {
+    const MAX_EVENT_TOPICS: usize = <ink_env::DefaultEnvironment as Environment>::MAX_EVENT_TOPICS;
+
+    type AccountId = <ink_env::DefaultEnvironment as Environment>::AccountId;
+    type Balance = <ink_env::DefaultEnvironment as Environment>::Balance;
+    type Hash = <ink_env::DefaultEnvironment as Environment>::Hash;
+    type BlockNumber = <ink_env::DefaultEnvironment as Environment>::BlockNumber;
+    type Timestamp = <ink_env::DefaultEnvironment as Environment>::Timestamp;
+
+    type ChainExtension = FetchRandom;
+}
+
+#[ink::contract(env = crate::CustomEnvironment)]
 mod lottery {
     pub type Result<T> = core::result::Result<T, Error>;
+    use ink_storage::{traits::SpreadAllocate, Mapping};
 
-    use ink_storage::Mapping;
 
     /// Emitted whenever a new bet is being registered.
     #[ink(event)]
@@ -21,9 +62,11 @@ mod lottery {
     /// Add new fields to the below struct in order
     /// to add new static storage fields to your contract.
     #[ink(storage)]
+    #[derive(SpreadAllocate)]
     pub struct Lottery {
         ticket_and_address: Mapping<[u8; 32], [AccountId; 8]>,
         def_address: [AccountId; 8],
+        last_drawing: BlockNumber,
         jackpot: Balance,
     }
 
@@ -37,15 +80,24 @@ mod lottery {
 
     const BET_PRICE: Balance = 1_000_000_000_000;
 
+    impl Default for Lottery {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl Lottery {
-        /// Constructor that initializes the `bool` value to the given `init_value`.
         #[ink(constructor)]
         pub fn new() -> Self {
-            Self {
-                ticket_and_address: Mapping::default(),
-                jackpot: 0,
-                def_address: [AccountId::default(); 8],
-            }
+            ink_lang::utils::initialize_contract(Self::new_init)
+        }
+
+        fn new_init(&mut self) {
+            let bet = [0; 32];
+            self.ticket_and_address.insert(bet, &[AccountId::default(); 8]);
+            self.jackpot = 0;
+            self.last_drawing = BlockNumber::default();
+            self.def_address = [AccountId::default(); 8];
         }
         /// Register specific bet with caller as owner.
         #[ink(message, payable)]
@@ -57,7 +109,7 @@ mod lottery {
             let caller = self.env().caller();
 
             if self.ticket_and_address.contains(bet) {
-                let mut betters = self.ticket_and_address.get(&bet).unwrap();
+                let mut betters = self.ticket_and_address.get(bet).unwrap();
                 assert!(betters[7] == AccountId::default(), "bet sold out!");
                 for i in 0..betters.len() {
                     if betters[i] == AccountId::default() {
@@ -73,15 +125,36 @@ mod lottery {
                 self.ticket_and_address.insert(bet, &betters);
                 self.env().emit_event(RegisterBet { bet, from: caller });
             }
+
+            let now = self.env().block_number();
+            if now - self.last_drawing >= 10 && now != 0 {
+                self.draw(now);
+            }
             Ok(())
+        }
+
+        fn draw(&mut self, now: BlockNumber) {
+            let rand_output = self.env().extension().fetch_random().unwrap();
+
+            let mut win_bet: [u8; 32] = [0; 32];
+            win_bet[0] = rand_output[0];
+            win_bet[1] = rand_output[1];
+            win_bet[2] = rand_output[2];
+
+            self.last_drawing = now;
         }
         // Get all accounts per bet
         #[ink(message)]
-        pub fn get_accounts_by_bet(&self, bet_hash: [u8; 32]) -> [AccountId; 8] {
-            return self
-                .ticket_and_address
-                .get(&bet_hash)
-                .unwrap_or(self.def_address);
+        pub fn get_accounts_by_bet(&mut self, bet_hash: [u8; 32]) -> [AccountId; 8] {
+            self.ticket_and_address
+                .get(bet_hash)
+                .unwrap_or(self.def_address)
+        }
+
+        /// Simply returns the block of the last drawing
+        #[ink(message)]
+        pub fn get_last_drawing(&mut self) -> BlockNumber {
+            self.last_drawing
         }
     }
 
@@ -93,10 +166,11 @@ mod lottery {
         /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
 
+        use crate::CustomEnvironment;
         /// Imports `ink_lang` so we can use `#[ink::test]`.
         use ink_lang as ink;
 
-        fn default_accounts() -> ink_env::test::DefaultAccounts<ink_env::DefaultEnvironment> {
+        fn default_accounts() -> ink_env::test::DefaultAccounts<CustomEnvironment> {
             ink_env::test::default_accounts::<Environment>()
         }
 
@@ -166,7 +240,7 @@ mod lottery {
         fn get_accounts_by_bet_init_should_be_default() {
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.alice);
-            let contract = Lottery::new();
+            let mut contract = Lottery::new();
             assert_eq!(
                 contract.get_accounts_by_bet([0; 32]),
                 [AccountId::default(); 8]
@@ -208,6 +282,23 @@ mod lottery {
         }
 
         #[ink::test]
+        fn bet_filled_dont_panic() {
+            let default_accounts = default_accounts();
+            let mut bet_arr = [0; 32];
+            bet_arr[0] = 100;
+            bet_arr[1] = 100;
+            bet_arr[2] = 100;
+
+            set_next_caller(default_accounts.bob);
+            let mut contract = Lottery::new();
+
+            // 8 is fine
+            for _i in 0..8 {
+                assert_eq!(contract.register_bet(bet_arr), Ok(()));
+            }
+        }
+
+        #[ink::test]
         #[should_panic(expected = "bet sold out!")]
         fn bet_sold_out() {
             let default_accounts = default_accounts();
@@ -223,5 +314,23 @@ mod lottery {
                 assert_eq!(contract.register_bet(bet_arr), Ok(()));
             }
         }
+
+        #[ink::test]
+        fn get_last_drawing_init_should_be_zero() {
+            let default_accounts = default_accounts();
+            set_next_caller(default_accounts.alice);
+            let mut contract = Lottery::new();
+            assert_eq!(contract.get_last_drawing(), 0);
+        }
+
+        /*#[ink::test]
+        fn test_draw_sets_last_drawing() {
+            let default_accounts = default_accounts();
+            set_next_caller(default_accounts.bob);
+            let mut contract = Lottery::new();
+
+            contract.draw(10)
+
+        }*/
     }
 }
