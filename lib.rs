@@ -543,7 +543,7 @@ mod lottery {
         }
 
         #[ink::test]
-        fn test_1000_applicants(){
+        fn test_1000_applicants() {
             use_random_chain_extension();
             let mut contract = setup_jackpot(255);
             assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
@@ -634,7 +634,6 @@ mod lottery {
             bet_arr2[0] = 1;
             bet_arr2[1] = 1;
             bet_arr2[2] = 1;
-
 
             assert_eq!(contract.register_bet(bet), Ok(()));
             assert_eq!(contract.register_bet(bet_arr2), Ok(()));
