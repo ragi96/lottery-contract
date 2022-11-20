@@ -57,6 +57,12 @@ mod lottery {
         from: AccountId,
     }
 
+    impl Default for Lottery {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     /// Defines the storage of your contract.
     /// Add new fields to the below struct in order
     /// to add new static storage fields to your contract.
@@ -175,7 +181,7 @@ mod lottery {
                     count += 1;
                 }
             }
-            return count;
+            count
         }
 
         fn reset_game(&mut self) {
@@ -198,10 +204,9 @@ mod lottery {
 
         #[ink(message)]
         pub fn get_winner_or_default(&self) -> [AccountId; 8] {
-            return self
-                .ticket_and_address
+            self.ticket_and_address
                 .get((self.winner_bet, self.round))
-                .unwrap_or(self.def_address);
+                .unwrap_or(self.def_address)
         }
 
         /// Simply returns the block of the last drawing
