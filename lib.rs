@@ -347,7 +347,7 @@ mod lottery {
             ink_env::test::register_chain_extension(MockedExtension);
         }
 
-        fn advance_blocks(numb_blocks: u32){
+        fn advance_blocks(numb_blocks: u32) {
             for _i in 0..numb_blocks {
                 ink_env::test::advance_block::<Environment>();
             }
@@ -406,6 +406,30 @@ mod lottery {
                 contract.get_accounts_by_bet([0; 32]),
                 [AccountId::default(); 8]
             );
+        }
+
+        #[ink::test]
+        fn last_winner_bet_changed_after_first_draw() {
+            let mut contract = setup_jackpot(8);
+            let default_accounts = default_accounts();
+            let bet_arr = [0; 32];
+            let old_win_bet = contract.get();
+            advance_blocks(BLOCKS_PER_ROUND);
+            set_next_caller(default_accounts.bob);
+            assert_eq!(contract.register_bet(bet_arr), Ok(()));
+            assert_ne!(get_win_bet(), old_win_bet)
+        }
+
+        #[ink::test]
+        fn last_drawing_changed_after_first_draw() {
+            let mut contract = setup_jackpot(8);
+            let default_accounts = default_accounts();
+            let bet_arr = [0; 32];
+            let old_last_drawing = contract.get_last_drawing();
+            advance_blocks(BLOCKS_PER_ROUND);
+            set_next_caller(default_accounts.bob);
+            assert_eq!(contract.register_bet(bet_arr), Ok(()));
+            assert_ne!(old_last_drawing, contract.get_last_drawing());
         }
 
         #[ink::test]
