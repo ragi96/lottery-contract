@@ -87,6 +87,7 @@ mod lottery {
     }
 
     const BET_PRICE: Balance = 1_000_000;
+    const BLOCKS_PER_ROUND: u32 = 1000;
 
     impl Lottery {
         #[ink(constructor)]
@@ -134,13 +135,13 @@ mod lottery {
             }
 
             let now = self.env().block_number();
-            if now - self.last_drawing >= 10 && now != 0 {
-                self.draw(now);
+            if now - self.last_drawing >= BLOCKS_PER_ROUND && now != 0 {
+                self.draw();
             }
             Ok(())
         }
 
-        fn draw(&mut self, now: BlockNumber) {
+        fn draw(&mut self) {
             let rand_output = self.env().extension().fetch_random().unwrap();
 
             let mut win_bet: [u8; 32] = [0; 32];
@@ -148,10 +149,10 @@ mod lottery {
             win_bet[1] = rand_output[1];
             win_bet[2] = rand_output[2];
             self.winner_bet = win_bet;
-            self.last_drawing = now;
+            self.last_drawing = self.env().block_number();
 
             let winners = self.get_winner_or_default();
-            if winners != self.def_address && now != 0 {
+            if winners != self.def_address {
                 self.transfer_to_winners(winners);
             }
         }
@@ -189,6 +190,12 @@ mod lottery {
             self.jackpot = 0;
         }
 
+        pub fn get_winner_or_default(&self) -> [AccountId; 8] {
+            self.ticket_and_address
+                .get((self.winner_bet, self.round))
+                .unwrap_or(self.def_address)
+        }
+
         /// Simply returns the winner bet
         #[ink(message)]
         pub fn get(&self) -> [u8; 32] {
@@ -203,9 +210,9 @@ mod lottery {
         }
 
         #[ink(message)]
-        pub fn get_winner_or_default(&self) -> [AccountId; 8] {
+        pub fn get_last_winner_or_default(&self) -> [AccountId; 8] {
             self.ticket_and_address
-                .get((self.winner_bet, self.round))
+                .get((self.winner_bet, self.round - 1))
                 .unwrap_or(self.def_address)
         }
 
@@ -213,6 +220,12 @@ mod lottery {
         #[ink(message)]
         pub fn get_last_drawing(&mut self) -> BlockNumber {
             self.last_drawing
+        }
+
+        /// Simply returns the block of the last drawing
+        #[ink(message)]
+        pub fn get_next_drawing(&mut self) -> BlockNumber {
+            self.last_drawing + BLOCKS_PER_ROUND
         }
         /// returns the price per winner of the last round
         #[ink(message)]
@@ -334,12 +347,18 @@ mod lottery {
             ink_env::test::register_chain_extension(MockedExtension);
         }
 
+        fn advance_blocks(numb_blocks: u32){
+            for _i in 0..numb_blocks {
+                ink_env::test::advance_block::<Environment>();
+            }
+        }
+
         #[ink::test]
         fn default_works() {
             use_random_chain_extension();
             let mut contract = Lottery::new();
             let init = contract.get();
-            contract.draw(0);
+            contract.draw();
             let second = contract.get();
             assert_ne!(init, second);
         }
@@ -466,12 +485,13 @@ mod lottery {
         }
 
         #[ink::test]
-        fn test_draw_sets_last_drawing_to_10() {
+        fn test_draw_sets_last_drawing_to_actual_block() {
             use_random_chain_extension();
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.bob);
             let mut contract = Lottery::new();
-            contract.draw(10);
+            advance_blocks(10);
+            contract.draw();
             assert_eq!(contract.get_last_drawing(), 10);
         }
 
@@ -489,7 +509,7 @@ mod lottery {
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.bob);
             let mut contract = Lottery::new();
-            contract.draw(0);
+            contract.draw();
             assert_ne!(contract.get(), [0; 32]);
         }
 
@@ -499,7 +519,7 @@ mod lottery {
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.bob);
             let mut contract = Lottery::new();
-            contract.draw(0);
+            contract.draw();
             assert_eq!(contract.get(), get_win_bet());
         }
 
@@ -511,11 +531,12 @@ mod lottery {
             let mut contract = Lottery::new();
 
             assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
-            contract.draw(0);
+            advance_blocks(10);
+            contract.draw();
 
             let mut winners: [AccountId; 8] = [AccountId::default(); 8];
             winners[0] = default_accounts.alice;
-            assert_eq!(winners, contract.get_winner_or_default())
+            assert_eq!(winners, contract.get_last_winner_or_default())
         }
 
         #[ink::test]
@@ -535,8 +556,8 @@ mod lottery {
 
             assert_eq!(contract.register_bet(bet_arr2), Ok(()));
 
-            contract.draw(0);
-            let winner = contract.get_winner_or_default();
+            contract.draw();
+            let winner = contract.get_last_winner_or_default();
 
             let mut should_be_winner: [AccountId; 8] = [AccountId::default(); 8];
             should_be_winner[0] = default_accounts.bob;
@@ -565,9 +586,9 @@ mod lottery {
             set_next_caller(default_accounts.alice);
             assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
 
-            contract.draw(0);
+            contract.draw();
             assert_eq!(get_win_bet(), contract.get());
-            let winner = contract.get_winner_or_default();
+            let winner = contract.get_last_winner_or_default();
             let mut should_win: [AccountId; 8] = [AccountId::default(); 8];
             should_win[0] = default_accounts.bob;
             should_win[1] = default_accounts.alice;
@@ -585,7 +606,7 @@ mod lottery {
         fn two_winner_jackpot_should_be_half() {
             let mut contract = setup_jackpot(5);
             contract = register_number_of_win_bets(2, contract);
-            contract.draw(0);
+            contract.draw();
             let winner = contract.get_winner_or_default();
             contract.transfer_to_winners(winner);
 
@@ -597,7 +618,7 @@ mod lottery {
             let mut contract = setup_jackpot(5);
             contract = register_number_of_win_bets(3, contract);
 
-            contract.draw(0);
+            contract.draw();
             let winner = contract.get_winner_or_default();
             contract.transfer_to_winners(winner);
 
@@ -609,7 +630,7 @@ mod lottery {
             let mut contract = setup_jackpot(5);
             contract = register_number_of_win_bets(4, contract);
 
-            contract.draw(0);
+            contract.draw();
             let winner = contract.get_winner_or_default();
             contract.transfer_to_winners(winner);
 
@@ -621,7 +642,7 @@ mod lottery {
             let mut contract = setup_jackpot(5);
             contract = register_number_of_win_bets(8, contract);
 
-            contract.draw(0);
+            contract.draw();
             let winner = contract.get_winner_or_default();
             contract.transfer_to_winners(winner);
 
