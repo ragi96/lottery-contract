@@ -398,6 +398,17 @@ mod lottery {
         }
 
         #[ink::test]
+        fn get_accounts_by_lottery_default_should_be_default() {
+            let default_accounts = default_accounts();
+            set_next_caller(default_accounts.alice);
+            let mut contract = Lottery::default();
+            assert_eq!(
+                contract.get_accounts_by_bet([0; 32]),
+                [AccountId::default(); 8]
+            );
+        }
+
+        #[ink::test]
         fn get_accounts_by_bet_init_should_be_default() {
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.alice);
@@ -406,6 +417,24 @@ mod lottery {
                 contract.get_accounts_by_bet([0; 32]),
                 [AccountId::default(); 8]
             );
+        }
+
+        #[ink::test]
+        fn get_next_drawing_init_should_be_block_per_round() {
+            let mut contract = Lottery::new();
+            assert_eq!(BLOCKS_PER_ROUND, contract.get_next_drawing())
+        }
+
+        #[ink::test]
+        fn next_drawing_changed_after_first_draw() {
+            let mut contract = setup_jackpot(8);
+            let default_accounts = default_accounts();
+            let bet_arr = [0; 32];
+            let old_next_drawing = contract.get_next_drawing();
+            advance_blocks(BLOCKS_PER_ROUND);
+            set_next_caller(default_accounts.bob);
+            assert_eq!(contract.register_bet(bet_arr), Ok(()));
+            assert_ne!(old_next_drawing, contract.get_next_drawing());
         }
 
         #[ink::test]
@@ -593,8 +622,16 @@ mod lottery {
         }
 
         #[ink::test]
+        #[should_panic(
+            expected = "Encountered unexpected missing chain extension method: UnregisteredChainExtension"
+        )]
+        fn fetch_random_without_chain_extension_should_panic() {
+            let mut contract = Lottery::new();
+            contract.draw();
+        }
+
+        #[ink::test]
         fn test_1000_applicants() {
-            use_random_chain_extension();
             let mut contract = setup_jackpot(255);
             assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
         }
