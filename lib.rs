@@ -190,7 +190,7 @@ mod lottery {
             self.jackpot = 0;
         }
 
-        pub fn get_winner_or_default(&self) -> [AccountId; 8] {
+        fn get_winner_or_default(&self) -> [AccountId; 8] {
             self.ticket_and_address
                 .get((self.winner_bet, self.round))
                 .unwrap_or(self.def_address)
@@ -203,7 +203,7 @@ mod lottery {
         }
         // Get all accounts per bet
         #[ink(message)]
-        pub fn get_accounts_by_bet(&mut self, bet_hash: [u8; 32]) -> [AccountId; 8] {
+        pub fn get_accounts_by_bet(&self, bet_hash: [u8; 32]) -> [AccountId; 8] {
             self.ticket_and_address
                 .get((bet_hash, self.round))
                 .unwrap_or(self.def_address)
@@ -218,13 +218,13 @@ mod lottery {
 
         /// Simply returns the block of the last drawing
         #[ink(message)]
-        pub fn get_last_drawing(&mut self) -> BlockNumber {
+        pub fn get_last_drawing(&self) -> BlockNumber {
             self.last_drawing
         }
 
         /// Simply returns the block of the last drawing
         #[ink(message)]
-        pub fn get_next_drawing(&mut self) -> BlockNumber {
+        pub fn get_next_drawing(&self) -> BlockNumber {
             self.last_drawing + BLOCKS_PER_ROUND
         }
         /// returns the price per winner of the last round
@@ -401,7 +401,7 @@ mod lottery {
         fn get_accounts_by_lottery_default_should_be_default() {
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.alice);
-            let mut contract = Lottery::default();
+            let contract = Lottery::default();
             assert_eq!(
                 contract.get_accounts_by_bet([0; 32]),
                 [AccountId::default(); 8]
@@ -412,7 +412,7 @@ mod lottery {
         fn get_accounts_by_bet_init_should_be_default() {
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.alice);
-            let mut contract = Lottery::new();
+            let contract = Lottery::new();
             assert_eq!(
                 contract.get_accounts_by_bet([0; 32]),
                 [AccountId::default(); 8]
@@ -421,7 +421,7 @@ mod lottery {
 
         #[ink::test]
         fn get_next_drawing_init_should_be_block_per_round() {
-            let mut contract = Lottery::new();
+            let contract = Lottery::new();
             assert_eq!(BLOCKS_PER_ROUND, contract.get_next_drawing())
         }
 
@@ -533,7 +533,7 @@ mod lottery {
         fn get_last_drawing_init_should_be_zero() {
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.alice);
-            let mut contract = Lottery::new();
+            let contract = Lottery::new();
             assert_eq!(contract.get_last_drawing(), 0);
         }
 
