@@ -211,9 +211,14 @@ mod lottery {
 
         #[ink(message)]
         pub fn get_last_winner_or_default(&self) -> [AccountId; 8] {
-            self.ticket_and_address
-                .get((self.winner_bet, self.round - 1))
-                .unwrap_or(self.def_address)
+            if self.round == 0 {
+                return self.def_address;
+            } else {
+                return self
+                    .ticket_and_address
+                    .get((self.winner_bet, self.round - 1))
+                    .unwrap_or(self.def_address);
+            }
         }
 
         /// Simply returns the block of the last drawing
