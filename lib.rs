@@ -591,6 +591,13 @@ mod lottery {
         }
 
         #[ink::test]
+        fn winner_is_default_on_init() {
+            let contract = Lottery::new();
+            let winners: [AccountId; 8] = [AccountId::default(); 8];
+            assert_eq!(winners, contract.get_last_winner_or_default())
+        }
+
+        #[ink::test]
         fn winner_is_alice() {
             let default_accounts = default_accounts();
             use_random_chain_extension();
