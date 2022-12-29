@@ -52,7 +52,7 @@ mod lottery {
     #[ink(event)]
     pub struct RegisterBet {
         #[ink(topic)]
-        bet: [u8; 32],
+        bet: [u8; 3],
         #[ink(topic)]
         from: AccountId,
     }
@@ -70,11 +70,11 @@ mod lottery {
     #[derive(SpreadAllocate)]
     pub struct Lottery {
         round: u8,
-        ticket_and_address: Mapping<([u8; 32], u8), [AccountId; 8]>,
+        ticket_and_address: Mapping<([u8; 3], u8), [AccountId; 8]>,
         def_address: [AccountId; 8],
         last_drawing: BlockNumber,
         jackpot: Balance,
-        winner_bet: [u8; 32],
+        winner_bet: [u8; 3],
         last_pot_per_bet: Balance,
     }
 
@@ -96,20 +96,20 @@ mod lottery {
         }
 
         fn new_init(&mut self) {
-            let bet = [0; 32];
+            let bet = [0; 3];
             self.round = 0;
             self.ticket_and_address
                 .insert((bet, 0), &[AccountId::default(); 8]);
             self.jackpot = 0;
             self.last_drawing = BlockNumber::default();
             self.def_address = [AccountId::default(); 8];
-            self.winner_bet = [0; 32];
+            self.winner_bet = [0; 3];
             self.last_pot_per_bet = 0;
         }
 
         /// Register specific bet with caller as owner.
         #[ink(message, payable)]
-        pub fn register_bet(&mut self, bet: [u8; 32]) -> Result<()> {
+        pub fn register_bet(&mut self, bet: [u8; 3]) -> Result<()> {
             let trans_bal = self.env().transferred_value();
             assert!(trans_bal == BET_PRICE, "insufficient funds!");
             self.jackpot += trans_bal;
@@ -144,7 +144,7 @@ mod lottery {
         fn draw(&mut self) {
             let rand_output = self.env().extension().fetch_random().unwrap();
 
-            let mut win_bet: [u8; 32] = [0; 32];
+            let mut win_bet: [u8; 3] = [0; 3];
             win_bet[0] = rand_output[0];
             win_bet[1] = rand_output[1];
             win_bet[2] = rand_output[2];
@@ -198,12 +198,12 @@ mod lottery {
 
         /// Simply returns the winner bet
         #[ink(message)]
-        pub fn get(&self) -> [u8; 32] {
+        pub fn get(&self) -> [u8; 3] {
             self.winner_bet
         }
         // Get all accounts per bet
         #[ink(message)]
-        pub fn get_accounts_by_bet(&self, bet_hash: [u8; 32]) -> [AccountId; 8] {
+        pub fn get_accounts_by_bet(&self, bet_hash: [u8; 3]) -> [AccountId; 8] {
             self.ticket_and_address
                 .get((bet_hash, self.round))
                 .unwrap_or(self.def_address)
@@ -281,7 +281,7 @@ mod lottery {
 
         fn register_number_of_same_bets(
             num_registers: u8,
-            bet: [u8; 32],
+            bet: [u8; 3],
             mut contract: Lottery,
         ) -> Lottery {
             for _i in 0..num_registers {
@@ -290,7 +290,16 @@ mod lottery {
             contract
         }
 
-        fn get_win_bet() -> [u8; 32] {
+        fn get_win_bet() -> [u8; 3] {
+            let mut bet_arr = [0; 3];
+            bet_arr[0] = 21;
+            bet_arr[1] = 236;
+            bet_arr[2] = 123;
+
+            return bet_arr;
+        }
+
+        fn get_win_bet_chain_extension() -> [u8; 32] {
             let mut bet_arr = [0; 32];
             bet_arr[0] = 21;
             bet_arr[1] = 236;
@@ -303,7 +312,7 @@ mod lottery {
             use_random_chain_extension();
             let mut contract = Lottery::new();
             let default_accounts = default_accounts();
-            let mut bet_arr = [0; 32];
+            let mut bet_arr = [0; 3];
             set_next_caller(default_accounts.bob);
             for i in 0..numb_bets {
                 bet_arr[0] = i;
@@ -344,7 +353,7 @@ mod lottery {
                     1101
                 }
                 fn call(&mut self, _input: &[u8], output: &mut Vec<u8>) -> u32 {
-                    let ret = get_win_bet();
+                    let ret = get_win_bet_chain_extension();
                     scale::Encode::encode_to(&ret, output);
                     0
                 }
@@ -372,7 +381,7 @@ mod lottery {
         #[ink::test]
         fn register_works() {
             let default_accounts = default_accounts();
-            let mut bet = [0; 32];
+            let mut bet = [0; 3];
             bet[0] = 1;
             bet[1] = 2;
             bet[2] = 3;
@@ -387,7 +396,7 @@ mod lottery {
         fn transferred_balance_too_low() {
             let default_accounts = default_accounts();
             set_next_caller_too_low_balance(default_accounts.alice);
-            let bet_arr = [0; 32];
+            let bet_arr = [0; 3];
             let mut contract = Lottery::new();
             assert_eq!(contract.register_bet(bet_arr), Err(Error::TicketCosts));
         }
@@ -397,7 +406,7 @@ mod lottery {
         fn transferred_balance_too_high() {
             let default_accounts = default_accounts();
             set_next_caller_too_high_balance(default_accounts.alice);
-            let bet_arr = [0; 32];
+            let bet_arr = [0; 3];
             let mut contract = Lottery::new();
             assert_eq!(contract.register_bet(bet_arr), Err(Error::TicketCosts));
         }
@@ -408,7 +417,7 @@ mod lottery {
             set_next_caller(default_accounts.alice);
             let contract = Lottery::default();
             assert_eq!(
-                contract.get_accounts_by_bet([0; 32]),
+                contract.get_accounts_by_bet([0; 3]),
                 [AccountId::default(); 8]
             );
         }
@@ -419,7 +428,7 @@ mod lottery {
             set_next_caller(default_accounts.alice);
             let contract = Lottery::new();
             assert_eq!(
-                contract.get_accounts_by_bet([0; 32]),
+                contract.get_accounts_by_bet([0; 3]),
                 [AccountId::default(); 8]
             );
         }
@@ -434,7 +443,7 @@ mod lottery {
         fn next_drawing_changed_after_first_draw() {
             let mut contract = setup_jackpot(8);
             let default_accounts = default_accounts();
-            let bet_arr = [0; 32];
+            let bet_arr = [0; 3];
             let old_next_drawing = contract.get_next_drawing();
             advance_blocks(BLOCKS_PER_ROUND);
             set_next_caller(default_accounts.bob);
@@ -446,7 +455,7 @@ mod lottery {
         fn last_winner_bet_changed_after_first_draw() {
             let mut contract = setup_jackpot(8);
             let default_accounts = default_accounts();
-            let bet_arr = [0; 32];
+            let bet_arr = [0; 3];
             let old_win_bet = contract.get();
             advance_blocks(BLOCKS_PER_ROUND);
             set_next_caller(default_accounts.bob);
@@ -458,7 +467,7 @@ mod lottery {
         fn last_drawing_changed_after_first_draw() {
             let mut contract = setup_jackpot(8);
             let default_accounts = default_accounts();
-            let bet_arr = [0; 32];
+            let bet_arr = [0; 3];
             let old_last_drawing = contract.get_last_drawing();
             advance_blocks(BLOCKS_PER_ROUND);
             set_next_caller(default_accounts.bob);
@@ -472,7 +481,7 @@ mod lottery {
             set_next_caller(default_accounts.alice);
             let mut contract = Lottery::new();
 
-            let mut bet = [0; 32];
+            let mut bet = [0; 3];
             bet[0] = 1;
             bet[1] = 2;
             bet[2] = 3;
@@ -485,7 +494,7 @@ mod lottery {
         #[ink::test]
         fn get_accounts_by_bet_should_be_two_alice() {
             let default_accounts = default_accounts();
-            let mut bet = [0; 32];
+            let mut bet = [0; 3];
             bet[0] = 1;
             bet[1] = 2;
             bet[2] = 3;
@@ -503,7 +512,7 @@ mod lottery {
         #[ink::test]
         fn bet_filled_dont_panic() {
             let default_accounts = default_accounts();
-            let mut bet_arr = [0; 32];
+            let mut bet_arr = [0; 3];
             bet_arr[0] = 100;
             bet_arr[1] = 100;
             bet_arr[2] = 100;
@@ -521,7 +530,7 @@ mod lottery {
         #[should_panic(expected = "bet sold out!")]
         fn bet_sold_out() {
             let default_accounts = default_accounts();
-            let mut bet_arr = [0; 32];
+            let mut bet_arr = [0; 3];
             bet_arr[0] = 99;
             bet_arr[1] = 99;
             bet_arr[2] = 99;
@@ -558,7 +567,7 @@ mod lottery {
             let default_accounts = default_accounts();
             set_next_caller(default_accounts.bob);
             let contract = Lottery::new();
-            assert_eq!(contract.get(), [0; 32]);
+            assert_eq!(contract.get(), [0; 3]);
         }
 
         #[ink::test]
@@ -568,7 +577,7 @@ mod lottery {
             set_next_caller(default_accounts.bob);
             let mut contract = Lottery::new();
             contract.draw();
-            assert_ne!(contract.get(), [0; 32]);
+            assert_ne!(contract.get(), [0; 3]);
         }
 
         #[ink::test]
@@ -607,7 +616,7 @@ mod lottery {
             assert_eq!(contract.register_bet(get_win_bet()), Ok(()));
 
             set_next_caller(default_accounts.alice);
-            let mut bet_arr2 = [0; 32];
+            let mut bet_arr2 = [0; 3];
             bet_arr2[0] = 1;
             bet_arr2[1] = 1;
             bet_arr2[2] = 1;
@@ -722,7 +731,7 @@ mod lottery {
             set_next_caller(default_accounts.alice);
             let bet = get_win_bet();
 
-            let mut bet_arr2 = [0; 32];
+            let mut bet_arr2 = [0; 3];
             bet_arr2[0] = 1;
             bet_arr2[1] = 1;
             bet_arr2[2] = 1;
