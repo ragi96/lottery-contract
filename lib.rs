@@ -185,7 +185,7 @@ mod lottery {
 
         fn get_number_of_winner(&mut self, winners: [AccountId; 8]) -> u8 {
             let mut count = 0;
-            for i in 0..7 {
+            for i in 0..8 {
                 if winners[i] != AccountId::default() {
                     count += 1;
                 }
