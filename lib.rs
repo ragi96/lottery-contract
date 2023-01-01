@@ -88,7 +88,7 @@ mod lottery {
     }
 
     const BET_PRICE: Balance = 1_000_000;
-    const BLOCKS_PER_ROUND: u32 = 1000;
+    const BLOCKS_PER_ROUND: u32 = 10;
 
     impl Lottery {
         #[ink(constructor)]
