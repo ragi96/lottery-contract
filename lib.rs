@@ -69,14 +69,14 @@ mod lottery {
     #[ink(storage)]
     #[derive(SpreadAllocate)]
     pub struct Lottery {
-        round: u8,
         ticket_and_address: Mapping<([u8; 3], u8), [AccountId; 8]>,
-        default_address: [AccountId; 8],
+        round: u8,
         last_drawing: BlockNumber,
         jackpot: Balance,
-        last_jackpot: Balance,
         winner_ticket: [u8; 3],
+        last_jackpot: Balance,
         last_pot_per_ticket: Balance,
+        default_address: [AccountId; 8],
     }
 
     /// Errors that can occur upon calling this contract.
@@ -103,7 +103,7 @@ mod lottery {
                 .insert((ticket, 0), &[AccountId::default(); 8]);
             self.jackpot = 0;
             self.last_jackpot = 0;
-            self.last_drawing = BlockNumber::default();
+            self.last_drawing = self.env().block_number();
             self.default_address = [AccountId::default(); 8];
             self.winner_ticket = [0; 3];
             self.last_pot_per_ticket = 0;
@@ -238,6 +238,7 @@ mod lottery {
             self.last_jackpot
         }
 
+        /// returns the array of the last winners or the default address
         #[ink(message)]
         pub fn get_last_winner_or_default(&self) -> [AccountId; 8] {
             if self.round == 0 {
@@ -250,7 +251,7 @@ mod lottery {
             }
         }
 
-        /// Simply returns the block of the last drawing
+        /// returns the block of the last drawing
         #[ink(message)]
         pub fn get_next_drawing(&self) -> BlockNumber {
             self.last_drawing + BLOCKS_PER_ROUND
